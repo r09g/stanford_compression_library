@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from queue import Queue
+from collections import deque
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 
@@ -184,7 +184,8 @@ class huffman_adaptive_tree:
         self.root = huffman_adaptive_node(parent=None, weight=0)
         self.nyt = self.root        # NYT node
         self.implicit_order = []    # list of all nodes in descending implicit order
-        self.codebook = {}          # dict for input data encoding table 
+        self.codebook = {}          # dict for input data encoding table
+        self.alphabet_size = 256    # max number of symbols
 
     def encode_symbol(self, symbol):
         """
@@ -203,14 +204,18 @@ class huffman_adaptive_tree:
         p = self._find_symbol(symbol)   # pointer to leaf node containing next symbol
         if(p is self.nyt):
             if(len(self.codebook) == 0):
-                encoded_symbol = int2ba(ord(symbol), length=8)
+                encoded_symbol = int2ba(symbol, length=8)
             else:
-                encoded_symbol = self.codebook[None] + int2ba(ord(symbol), length=8)
-            p.left_child = huffman_adaptive_node(parent=p, weight=0, value=None)
-            p.right_child = huffman_adaptive_node(parent=p, weight=0, value=symbol)
-            self.nyt = p.left_child
-            leaf_to_increment = p.right_child
-            self._update_implicit_order()
+                encoded_symbol = self.codebook[None] + int2ba(symbol, length=8)
+            if(len(self.implicit_order) == (2*self.alphabet_size - 1)):
+                p.value = symbol
+                self.nyt = None
+            else:
+                p.left_child = huffman_adaptive_node(parent=p, weight=0, value=None)
+                p.right_child = huffman_adaptive_node(parent=p, weight=0, value=symbol)
+                self.nyt = p.left_child
+                leaf_to_increment = p.right_child
+                self._update_implicit_order()
         else:
             encoded_symbol = self.codebook[symbol]
             # swap p with leader of its block
@@ -241,7 +246,7 @@ class huffman_adaptive_tree:
         symbol = None
         if(self.nyt is self.root):
             # special case for first symbol
-            symbol = chr(ba2int(encoded_bitarray[0:8]))
+            symbol = ba2int(encoded_bitarray[0:8])
             num_bits = 8
         else: 
             # read in bits until a codeword is found (NYT is in codebook)
@@ -252,7 +257,7 @@ class huffman_adaptive_tree:
                 path = encoded_bitarray[0:num_bits]
             key = list(self.codebook.keys())[list(self.codebook.values()).index(path)]
             if(key is None):  # new symbol
-                symbol = chr(ba2int(encoded_bitarray[num_bits:num_bits+8]))
+                symbol = ba2int(encoded_bitarray[num_bits:num_bits+8])
                 num_bits += 8
             else:
                 symbol = key
@@ -321,16 +326,16 @@ class huffman_adaptive_tree:
         right to left
         """
         self.implicit_order = [self.root]
-        q = Queue()
-        q.put(self.root)
-        while(q.empty() is False):
-            v = q.get()
-            if((v.right_child is not None) and (sum((v.right_child is node) for node in self.implicit_order)) == 0):
+        q = deque(maxlen=(2*self.alphabet_size - 1))
+        q.append(self.root)
+        while(len(q) > 0):
+            v = q.popleft()
+            if(v.right_child is not None):
                 self.implicit_order.append(v.right_child)
-                q.put(v.right_child)
-            if((v.left_child is not None) and (sum((v.left_child is node) for node in self.implicit_order)) == 0):
+                q.append(v.right_child)
+            if(v.left_child is not None):
                 self.implicit_order.append(v.left_child)
-                q.put(v.left_child)
+                q.append(v.left_child)
             
     def _update_codebook(self, node, path=None):
         """
@@ -338,6 +343,7 @@ class huffman_adaptive_tree:
         """
         if(path is None):  # initialize
             path = bitarray()
+            self.codebook = {}
         # if leaf, add codeword to codebook
         if(node.is_leaf):
             self.codebook[node.value] = path.copy()
@@ -359,7 +365,7 @@ class huffman_adaptive_tree:
         """
         self.root.print_node()
         print()
-        order = 512
+        order = 2*self.alphabet_size - 1
         for node in self.implicit_order:
             if(node.is_leaf):
                 print(f'Order: {order:3d} | Weight: {node.weight:3d} | Value: {node.value} | LEAF')
@@ -368,4 +374,71 @@ class huffman_adaptive_tree:
             order -= 1
         print()
         print(self.codebook)
+        
+
+
+
+
+
+def test_encdec():
+    # string = "aa bbb c"
+    string = []
+    tx = huffman_adaptive_tree()
+    encoded_bitarray = bitarray()
+    for i in range(256):
+        string.append(i)
+        encoded_bitarray += tx.encode_symbol(i)
+    for i in range(256):
+        string.append(i)
+        encoded_bitarray += tx.encode_symbol(i)
+    
+    print()
+    symbols = []
+    rx = huffman_adaptive_tree()
+    while(len(encoded_bitarray) > 0):
+        symbol, num_bits = rx.decode_symbol(encoded_bitarray)
+        symbols.append(symbol)
+        encoded_bitarray = encoded_bitarray[num_bits:]
+    print(string == symbols)
+    
+    
+if __name__ == "__main__":
+    test_encdec()
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
         
